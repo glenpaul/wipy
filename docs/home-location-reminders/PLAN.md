@@ -208,6 +208,37 @@ Software stack (all free, all local, all standard) — run as containers:
   publishing zone events to MQTT (§3.4).
 - **Ollama + 3–8B model** — natural-language reminder parsing (§6).
 
+### 4.1 Repurposing the Raspberry Pis and Arduinos (already owned)
+
+**Raspberry Pis — best used as voice satellites.** A Pi + a cheap USB
+speakerphone (~$20, e.g. a used Jabra 410) running **Wyoming Satellite** with
+local wake word gives a hands-free mic/speaker station identical in role to a
+$59 HA Voice PE — audio streams to the Jetson's Whisper/Piper over the LAN.
+Put one near the front door (it doubles as the announcement speaker for
+leaving-home reminders) and one in the kitchen. Other good Pi roles, if
+preferred:
+
+- **BLE room scanner** — a Pi's onboard Bluetooth running
+  `andrewjfreyer/monitor` (or room-assistant) covers a room's BLE presence
+  over MQTT, saving an ESPresense node in up to two rooms.
+- **Yard/outbuilding node** — a Pi in the garage or shed can host the BLE
+  scanner and a wired PIR/reed switch in one weatherproof box.
+- **Fallback HA host** — only relevant if the Jetson is an original 4 GB
+  Nano: run HA + Mosquitto on a Pi and let the Nano do cameras + voice.
+
+**Arduinos — depends on the board:**
+
+- **WiFi-capable boards** (Uno R4 WiFi, Nano 33 IoT, MKR WiFi, or any
+  ESP8266-based "Arduino") → standalone MQTT sensor nodes, same role as the
+  WiPy in §10: reed switch on the fridge or gate, PIR in the mudroom,
+  publishing to Mosquitto.
+- **Classic AVR boards** (Uno R3, Nano, Pro Mini — no radio) → wired
+  helpers rather than network nodes: hang reed switches/PIR off one and
+  connect it over USB-serial to a nearby Pi or the Jetson, or use one as a
+  door-side annunciator (piezo chirp + LED as a low-latency, zero-network
+  reminder cue). Also ideal for bench-prototyping sensor placement before
+  committing to Zigbee purchases.
+
 ---
 
 ## 5. Voice interface — iPhone 17 as the MMI
@@ -224,11 +255,12 @@ Software stack (all free, all local, all standard) — run as containers:
   Apple's push service — that is the one non-LAN hop, used only for
   notification delivery. On-LAN, the app can also receive them locally, and
   speech announcements are entirely local.)
-- **Hands-free in key rooms** *(optional but recommended)*: one or two voice
-  satellites — **Home Assistant Voice Preview Edition (~$59)** or an
-  **ESP32-S3-BOX-3 (~$50)** — in the kitchen and near the front door. Wake
-  word ("Okay Nabu"), mic, and speaker; the same satellite near the door is
-  the speaker that announces the celery reminder.
+- **Hands-free in key rooms**: use the two Raspberry Pis as **Wyoming
+  Satellite** stations (§4.1) — each needs only a ~$20 USB speakerphone — in
+  the kitchen and near the front door. Wake word, mic, and speaker; the
+  satellite near the door is the speaker that announces the celery reminder.
+  (Dedicated hardware like the $59 HA Voice PE or a $50 ESP32-S3-BOX-3
+  remains an option for additional rooms later.)
 
 ---
 
@@ -280,25 +312,27 @@ reminders.
 ## 7. Bill of materials (typical 8-room house + yard)
 
 Already owned (no cost): **Nvidia Jetson** (server), **2× Luxonis OAK-D**
-(vision), **iPhone 17** (voice interface).
+(vision), **2× Raspberry Pi** (voice satellites / BLE scanners), **Arduino
+boards** (wired sensor helpers), **iPhone 17** (voice interface).
 
 | Item | Qty | Unit | Subtotal |
 |---|---|---|---|
-| ESP32 dev boards (ESPresense nodes) | 8 | $6 | $48 |
-| USB power adapters/cables for nodes | 8 | $3 | $24 |
+| ESP32 dev boards (ESPresense nodes; 2 rooms covered by Pi BLE scanners) | 6 | $6 | $36 |
+| USB power adapters/cables for nodes | 6 | $3 | $18 |
 | Weatherproof boxes (yard node / outdoor OAK-D) | 2 | $8 | $16 |
 | Zigbee USB dongle | 1 | $25 | $25 |
 | Zigbee door contact sensors | 4 | $12 | $48 |
 | Zigbee PIR motion sensors | 2 | $10 | $20 |
 | BLE keychain beacon (optional) | 1 | $10 | $10 |
-| Voice satellite (HA Voice PE) | 1–2 | $59 | $59–118 |
+| USB speakerphones for Pi voice satellites | 2 | $20 | $40 |
 | Camera mounts / USB3 extension or PoE for OAK-D | 2 | $15 | $30 |
-| **Total new spend** | | | **≈ $280–340** |
+| **Total new spend** | | | **≈ $245** |
 
 The OAK-D at the hallway replaces the mmWave sensor from the earlier draft,
-and the Jetson replaces the mini PC — together saving ~$170 while giving
-better performance. Minimum viable version (phone-only voice, 4 rooms, no
-satellites): **under $120**.
+the Jetson replaces the mini PC, and the Pis replace the dedicated voice
+satellites — together cutting new spend roughly in half versus the
+buy-everything build. Minimum viable version (phone-only voice, 4 rooms,
+Pi BLE scanners instead of ESP32s): **under $100**.
 
 ---
 
@@ -322,8 +356,10 @@ satellites): **under $120**.
 5. **Phase 4 — Reminder engine (weekend 4).** Reminder store + intents
    ("remind me to X when I leave / when I'm in the Y"), Ollama-based
    free-form parsing, acknowledgment flow, snooze/re-arm.
-6. **Phase 5 — Coverage & polish.** Remaining rooms, yard node, voice
-   satellites, fridge-door sensor.
+6. **Phase 5 — Coverage & polish.** Remaining rooms, yard node, the two Pi
+   voice satellites (Wyoming Satellite + USB speakerphones, front door +
+   kitchen), fridge-door sensor (Zigbee, or an Arduino + reed switch per
+   §4.1).
 
 ---
 
