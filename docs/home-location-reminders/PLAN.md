@@ -208,9 +208,9 @@ Software stack (all free, all local, all standard) — run as containers:
   publishing zone events to MQTT (§3.4).
 - **Ollama + 3–8B model** — natural-language reminder parsing (§6).
 
-### 4.1 Repurposing the Raspberry Pis and Arduinos (already owned)
+### 4.1 Repurposing the Raspberry Pis (already owned)
 
-**Raspberry Pis — best used as voice satellites.** A Pi + a cheap USB
+**Best used as voice satellites.** A Pi + a cheap USB
 speakerphone (~$20, e.g. a used Jabra 410) running **Wyoming Satellite** with
 local wake word gives a hands-free mic/speaker station identical in role to a
 $59 HA Voice PE — audio streams to the Jetson's Whisper/Piper over the LAN.
@@ -226,7 +226,44 @@ preferred:
 - **Fallback HA host** — only relevant if the Jetson is an original 4 GB
   Nano: run HA + Mosquitto on a Pi and let the Nano do cameras + voice.
 
-**Arduinos — depends on the board:**
+### 4.2 Optional heavy-inference tier — Mac Studio over Tailscale
+
+The Mac Studio joins the system as an **opportunistic upgrade**, not a
+dependency. Apple-Silicon unified memory makes it by far the strongest
+inference box in the house:
+
+- **Big-model reminder parsing & conversation.** Run **Ollama** (or an
+  MLX-based server) on the Mac serving a 30–70B-class model (RAM permitting).
+  Home Assistant's conversation agent / the reminder parser calls it at its
+  Tailscale address. The jump from a 3–8B model buys near-perfect free-form
+  parsing and useful dialog: *"what have I asked you to remember this
+  week?"*, *"move the celery reminder to tomorrow."*
+- **Alternative STT host.** The Wyoming protocol doesn't care where
+  `faster-whisper` runs — if the Jetson is an older model, point HA's STT at
+  Whisper `large` on the Mac instead.
+- **Remote access for the iPhone.** Tailscale on the phone reaches HA/Assist
+  securely from anywhere — create reminders on the commute home, no port
+  forwarding, no cloud relay of content.
+
+**Design rule — graceful degradation.** The Mac may be asleep, busy, or (if
+the office is off-site) unreachable. The real-time loop (presence fusion,
+door triggers, announcements) lives entirely on the Jetson and never blocks
+on the Mac. LLM calls use a fallback chain with a short timeout:
+
+```
+Mac Studio (70B via Tailscale) → Jetson (3–8B local) → HA template intents
+```
+
+Keep the Mac awake for serving with `caffeinate` or a power-settings
+tweak; a failed health check just drops the chain down one level.
+
+**Privacy note.** Tailscale's data plane is peer-to-peer WireGuard between
+your own devices — reminder content never transits a third party. Its
+coordination plane (login/key exchange) is a cloud service; if even that is
+unwanted, self-host **Headscale** and the system is fully
+third-party-free again.
+
+### 4.3 Arduinos (already owned) — role depends on the board
 
 - **WiFi-capable boards** (Uno R4 WiFi, Nano 33 IoT, MKR WiFi, or any
   ESP8266-based "Arduino") → standalone MQTT sensor nodes, same role as the
@@ -313,7 +350,8 @@ reminders.
 
 Already owned (no cost): **Nvidia Jetson** (server), **2× Luxonis OAK-D**
 (vision), **2× Raspberry Pi** (voice satellites / BLE scanners), **Arduino
-boards** (wired sensor helpers), **iPhone 17** (voice interface).
+boards** (wired sensor helpers), **Mac Studio** (big-model inference over
+Tailscale), **iPhone 17** (voice interface).
 
 | Item | Qty | Unit | Subtotal |
 |---|---|---|---|
@@ -375,7 +413,8 @@ Pi BLE scanners instead of ESP32s): **under $100**.
 | RSSI drift / node placement | ESPresense calibration per room; keep nodes away from metal and at ~1.5 m height |
 | Camera privacy concerns in the home | OAK-D inference is on-camera; host service consumes metadata only (no frames stored); cameras limited to transit zones, not private rooms |
 | OAK-D USB3 cable length limits (~2 m) | Active USB3 extension, or PoE models/adapter if runs are long; the Jetson can also sit near the hallway camera |
-| Jetson model constraints (older Nano) | See §4 table — shrink Whisper model and skip the LLM on a 4 GB Nano, or dedicate it to cameras and add a Pi for HA |
+| Jetson model constraints (older Nano) | See §4 table — shrink Whisper model and skip the LLM on a 4 GB Nano, or dedicate it to cameras and add a Pi for HA; offload STT/LLM to the Mac Studio (§4.2) |
+| Mac Studio asleep/unreachable | Never in the real-time path; LLM fallback chain Mac → Jetson → template intents with short timeouts (§4.2) |
 
 ---
 
