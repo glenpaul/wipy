@@ -56,8 +56,8 @@ Design constraints:
         │                       │MQTT/WiFi│ Zigbee  │ USB3/PoE
         │                       ▼         ▼         ▼
    ┌────┴──────────┐  ┌──────────────┐ ┌─────────┐ ┌────────────────┐
-   │ BLE presence  │  │ ESP32 nodes  │ │ Zigbee  │ │ 2× Luxonis OAK │
-   │ source: phone │─▶│ 1 per room   │ │ door /  │ │ (already owned)│
+   │ BLE presence  │  │ ESP32 nodes  │ │ Zigbee  │ │ OAK-D Lite     │
+   │ source: phone │─▶│ 1 per room   │ │ door /  │ │ FF + AF (owned)│
    │ IRK, watch,   │BLE│ (ESPresense) │ │ PIR     │ │ on-camera      │
    │ or BLE tag    │  │ ~$5–8 each   │ │ sensors │ │ person detect  │
    └───────────────┘  └──────────────┘ └─────────┘ └────────────────┘
@@ -124,29 +124,42 @@ the contact sensor and conditioned on presence**:
 - If the yard exceeds WiFi range, a $20 outdoor WiFi extender or a powerline
   adapter to the shed solves it.
 
-### 3.4 Vision — two Luxonis OAK-D cameras (already owned)
+### 3.4 Vision — OAK-D Lite FF + OAK-D Lite AF (already owned)
 
-The OAK-D cameras are the system's precision layer. Their onboard VPU runs
-the neural nets **on the camera itself** (DepthAI pipeline), so the Jetson
-only receives lightweight detection metadata — not video — and stays free for
-voice/LLM work. Being stereo-depth cameras, every person detection comes with
-**spatial (X,Y,Z) coordinates** out of the box (DepthAI's
-`spatialDetectionNetwork` + object tracker), i.e. real positions in meters,
-not just bounding boxes.
+The two OAK-D Lite cameras (one fixed-focus, one autofocus) are the system's
+precision layer. Their onboard Myriad X VPU runs the neural nets **on the
+camera itself** (DepthAI pipeline), so the Jetson only receives lightweight
+detection metadata — not video — and stays free for voice/LLM work. Both are
+stereo-depth cameras, so every person detection comes with **spatial (X,Y,Z)
+coordinates** out of the box (DepthAI's `spatialDetectionNetwork` + object
+tracker) — real positions in meters, not just bounding boxes.
 
-- **Camera 1 — exit hallway / front door, facing into the house.** On-device
-  person detection + tracking with spatial output gives distance-to-door and
-  direction of travel, so it distinguishes "walking toward the door" from
-  "walking past it" seconds before the door even opens. Define a virtual
-  trip-zone (e.g. within 2 m of the door, velocity toward it) → publishes
-  `person_toward_door`.
-- **Camera 2 — kitchen or back yard**, whichever matters more day-to-day:
-  - *Kitchen:* depth-defined zones ("at the fridge", "at the counter") for
-    in-kitchen reminders — with stereo depth these zones are actual 3D boxes,
-    immune to the perspective false-positives a 2D camera would give.
-  - *Yard:* person detection with position over the whole yard from one
-    vantage point — better coverage than several BLE nodes, and it works
-    when you leave your phone inside.
+OAK-D Lite specifics that shape the design:
+
+- **Depth range:** the Lite's 480p stereo pair is reliable to roughly **4 m**
+  — ample for a hallway or kitchen, but not whole-yard coverage from one
+  vantage point.
+- **Power:** USB-C only (no PoE variant). On a proper USB3 port it's
+  bus-powered; on USB2 or long runs, feed it 5 V via a Y-splitter.
+- **AF vs FF placement:** Luxonis recommends **fixed-focus where there's
+  vibration** — an AF module can be jolted into refocusing by a slamming
+  door. So:
+  - **OAK-D Lite FF → exit hallway, facing into the house** (next to the
+    front door). Spatial person detection + tracking gives distance-to-door
+    and direction of travel, distinguishing "walking toward the door" from
+    "walking past it" seconds before the door opens. Define a virtual
+    trip-zone (within ~2 m of the door, velocity toward it) → publishes
+    `person_toward_door`. FF shrugs off door-slam vibration, and person-scale
+    detection needs no close focus.
+  - **OAK-D Lite AF → kitchen.** Depth-defined 3D zones ("at the fridge",
+    "at the counter") for in-kitchen reminders, immune to the perspective
+    false-positives a 2D camera gives. AF handles the kitchen's shorter,
+    varied working distances well.
+- **Yard:** rather than stretching a Lite beyond its depth range, cover the
+  yard with the BLE node + gate contact + PIR (§3.2–3.3). If yard vision
+  proves worth it later, aim a Lite at a *chokepoint* (patio door, gate path)
+  where subjects pass within 4 m — detection still works at longer range on
+  the 4K color sensor; only the depth estimate degrades.
 - A small **DepthAI host service on the Jetson** (Python, ~100 lines)
   subscribes to each camera's detection stream and publishes zone events to
   MQTT: `vision/hallway/person_toward_door`, `vision/yard/person_present`.
@@ -348,7 +361,7 @@ reminders.
 
 ## 7. Bill of materials (typical 8-room house + yard)
 
-Already owned (no cost): **Nvidia Jetson** (server), **2× Luxonis OAK-D**
+Already owned (no cost): **Nvidia Jetson** (server), **OAK-D Lite FF + AF**
 (vision), **2× Raspberry Pi** (voice satellites / BLE scanners), **Arduino
 boards** (wired sensor helpers), **Mac Studio** (big-model inference over
 Tailscale), **iPhone 17** (voice interface).
@@ -357,14 +370,14 @@ Tailscale), **iPhone 17** (voice interface).
 |---|---|---|---|
 | ESP32 dev boards (ESPresense nodes; 2 rooms covered by Pi BLE scanners) | 6 | $6 | $36 |
 | USB power adapters/cables for nodes | 6 | $3 | $18 |
-| Weatherproof boxes (yard node / outdoor OAK-D) | 2 | $8 | $16 |
+| Weatherproof box (yard BLE node) | 1 | $8 | $8 |
 | Zigbee USB dongle | 1 | $25 | $25 |
 | Zigbee door contact sensors | 4 | $12 | $48 |
 | Zigbee PIR motion sensors | 2 | $10 | $20 |
 | BLE keychain beacon (optional) | 1 | $10 | $10 |
 | USB speakerphones for Pi voice satellites | 2 | $20 | $40 |
-| Camera mounts / USB3 extension or PoE for OAK-D | 2 | $15 | $30 |
-| **Total new spend** | | | **≈ $245** |
+| Camera mounts / active USB3 extension + 5 V Y-splitter | 2 | $15 | $30 |
+| **Total new spend** | | | **≈ $235** |
 
 The OAK-D at the hallway replaces the mmWave sensor from the earlier draft,
 the Jetson replaces the mini PC, and the Pis replace the dedicated voice
@@ -383,11 +396,11 @@ Pi BLE scanners instead of ESP32s): **under $100**.
    contact + hallway PIR. Build the first automation: door opens on a weekday
    morning → speak a hard-coded test reminder. *This alone already delivers
    the celery scenario, minus identity.*
-3. **Phase 2 — Vision (weekend 2).** Mount OAK-D #1 in the exit hallway;
-   stand up the DepthAI host service with a spatial person-detection +
-   tracking pipeline; define the door trip-zone; wire
+3. **Phase 2 — Vision (weekend 2).** Mount the OAK-D Lite FF in the exit
+   hallway; stand up the DepthAI host service with a spatial
+   person-detection + tracking pipeline; define the door trip-zone; wire
    `vision/hallway/person_toward_door` into the automation as a pre-arm
-   signal. Place OAK-D #2 (kitchen or yard) the same way.
+   signal. Place the OAK-D Lite AF in the kitchen the same way.
 4. **Phase 3 — Room presence (weekend 3).** Flash 3–4 ESP32s with ESPresense,
    extract the iPhone/Watch IRK (or use a fob), tune per-room RSSI thresholds,
    add the `person.glen in exit zone` identity condition to the automation.
@@ -412,7 +425,8 @@ Pi BLE scanners instead of ESP32s): **under $100**.
 | WiFi dead spots in yard | Outdoor extender or powerline adapter; yard zones can be coarse |
 | RSSI drift / node placement | ESPresense calibration per room; keep nodes away from metal and at ~1.5 m height |
 | Camera privacy concerns in the home | OAK-D inference is on-camera; host service consumes metadata only (no frames stored); cameras limited to transit zones, not private rooms |
-| OAK-D USB3 cable length limits (~2 m) | Active USB3 extension, or PoE models/adapter if runs are long; the Jetson can also sit near the hallway camera |
+| OAK-D Lite USB3 cable length (~2 m) and bus power limits | Active USB3 extension with a 5 V Y-splitter for power (no PoE variant exists for the Lite); or site the Jetson near the hallway camera |
+| OAK-D Lite depth fades past ~4 m | Keep camera zones within 4 m (hallway/kitchen are fine); yard covered by BLE + gate contact instead of vision |
 | Jetson model constraints (older Nano) | See §4 table — shrink Whisper model and skip the LLM on a 4 GB Nano, or dedicate it to cameras and add a Pi for HA; offload STT/LLM to the Mac Studio (§4.2) |
 | Mac Studio asleep/unreachable | Never in the real-time path; LLM fallback chain Mac → Jetson → template intents with short timeouts (§4.2) |
 
